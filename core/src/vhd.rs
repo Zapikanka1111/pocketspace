@@ -226,4 +226,41 @@ mod tests {
         let _ = detach_with_handle(handle);
         println!("VHD демонтовано");
     }
+
+    #[test]
+    fn test_persistence() {
+        let path = "C:\\Temp\\test_pocketspace.vhd";
+        
+        // Перше підключення — записуємо файл
+        let handle1 = mount_and_get_handle(path).expect("Перше монтування не вдалось");
+        println!("VHD змонтовано (1-й раз)");
+
+        let test_file_path = "Z:\\test_file.txt";
+        std::fs::write(test_file_path, "PocketSpace persistence test")
+            .expect("Не вдалось записати файл");
+        println!("Файл записано на Z:\\");
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let _ = detach_with_handle(handle1);
+        println!("VHD демонтовано");
+
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        // Друге підключення — перевіряємо файл
+        let handle2 = mount_and_get_handle(path).expect("Друге монтування не вдалось");
+        println!("VHD змонтовано (2-й раз)");
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let content = std::fs::read_to_string(test_file_path)
+            .expect("Не вдалось прочитати файл — дані не збереглись!");
+
+        assert_eq!(content, "PocketSpace persistence test");
+        println!("Файл прочитано успішно: {}", content);
+        println!("ПЕРСИСТЕНТНІСТЬ ПІДТВЕРДЖЕНА");
+
+        let _ = detach_with_handle(handle2);
+        println!("VHD демонтовано остаточно");
+    }
 }
