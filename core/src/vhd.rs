@@ -263,4 +263,37 @@ mod tests {
         let _ = detach_with_handle(handle2);
         println!("VHD демонтовано остаточно");
     }
+
+    #[test]
+    fn test_create_large_vhd() {
+        let path = "C:\\Temp\\test_encryption.vhd";
+        let result = create_vhd(path, 5);
+        assert!(result.is_ok(), "VHD не створився: {:?}", result);
+        println!("Великий VHD створено: {}", path);
+    }
+
+    #[test]
+    fn test_create_partitions() {
+        let path = "C:\\Temp\\test_encryption.vhd";
+        
+        let handle = mount_and_get_handle(path).expect("Монтування не вдалось");
+        println!("VHD змонтовано");
+
+        let physical_path = get_physical_path(handle).expect("Не вдалось отримати шлях");
+        let disk_number: u32 = physical_path
+            .replace("\\\\.\\PhysicalDrive", "")
+            .parse()
+            .expect("Не вдалось розпізнати номер диску");
+        println!("Номер диску: {}", disk_number);
+
+        let result = crate::create_two_partitions(disk_number, 2, 'Y', 'X');
+        assert!(result.is_ok(), "Розбивка не вдалась: {:?}", result);
+        println!("Диск розбито на два розділи: Y: (2GB) і X: (решта)");
+
+        println!("Перевір провідник! Чекаю 20 секунд...");
+        std::thread::sleep(std::time::Duration::from_secs(20));
+
+        let _ = detach_with_handle(handle);
+        println!("VHD демонтовано");
+    }
 }
