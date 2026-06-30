@@ -123,6 +123,40 @@ pub fn detach_with_handle(handle: HANDLE) -> Result<(), String> {
     }
 }
 
+use std::process::Command;
+
+pub fn format_vhd(handle: HANDLE, drive_letter: char) -> Result<(), String> {
+    let physical_path = get_physical_path(handle)?;
+    
+    let disk_number: u32 = physical_path
+        .replace("\\\\.\\PhysicalDrive", "")
+        .parse()
+        .map_err(|_| "Не вдалось розпізнати номер диску".to_string())?;
+
+    let diskpart_script = format!(
+        "select disk {}\nclean\nconvert gpt\ncreate partition primary\nformat fs=ntfs quick\nassign letter={}\n",
+        disk_number, drive_letter
+    );
+
+    let script_path = "C:\\Temp\\diskpart_script.txt";
+    std::fs::write(script_path, diskpart_script)
+        .map_err(|e| format!("Не вдалось записати скрипт: {}", e))?;
+
+    let output = Command::new("diskpart")
+        .arg("/s")
+        .arg(script_path)
+        .output()
+        .map_err(|e| format!("Помилка запуску diskpart: {}", e))?;
+
+    println!("DISKPART OUTPUT:\n{}", String::from_utf8_lossy(&output.stdout));
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!("diskpart помилка: {}", String::from_utf8_lossy(&output.stderr)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +206,24 @@ mod tests {
 
         let detach_result = detach_with_handle(handle);
         assert!(detach_result.is_ok());
+        println!("VHD демонтовано");
+    }
+
+    #[test]
+    fn test_format_vhd() {
+        let path = "C:\\Temp\\test_pocketspace.vhd";
+        
+        let handle = mount_and_get_handle(path).expect("Монтування не вдалось");
+        println!("VHD змонтовано");
+
+        let format_result = format_vhd(handle, 'Z');
+        assert!(format_result.is_ok(), "Форматування не вдалось: {:?}", format_result);
+        println!("Диск відформатовано і призначено букву Z:");
+
+        println!("Перевір зараз провідник Windows! Чекаю 20 секунд...");
+        std::thread::sleep(std::time::Duration::from_secs(20));
+
+        let _ = detach_with_handle(handle);
         println!("VHD демонтовано");
     }
 }
