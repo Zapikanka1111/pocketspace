@@ -3,6 +3,7 @@ use windows::{
     Win32::Foundation::{HANDLE, NO_ERROR},
     Win32::Storage::Vhd::{
         CreateVirtualDisk, OpenVirtualDisk, AttachVirtualDisk, DetachVirtualDisk,
+        GetVirtualDiskPhysicalPath,
         CREATE_VIRTUAL_DISK_FLAG_NONE,
         CREATE_VIRTUAL_DISK_PARAMETERS, OPEN_VIRTUAL_DISK_PARAMETERS,
         OPEN_VIRTUAL_DISK_FLAG, ATTACH_VIRTUAL_DISK_FLAG, DETACH_VIRTUAL_DISK_FLAG,
@@ -12,6 +13,23 @@ use windows::{
         VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
     },
 };
+
+pub fn get_physical_path(handle: HANDLE) -> Result<String, String> {
+    let mut buffer = vec![0u16; 256];
+    let mut size: u32 = (buffer.len() * 2) as u32;
+
+    let result = unsafe {
+        GetVirtualDiskPhysicalPath(handle, &mut size, windows::core::PWSTR(buffer.as_mut_ptr()))
+    };
+
+    if result != NO_ERROR {
+        return Err(format!("Помилка отримання шляху диску: {:?}", result));
+    }
+
+    let path = String::from_utf16_lossy(&buffer);
+    let path = path.trim_end_matches('\0').to_string();
+    Ok(path)
+}
 
 pub fn create_vhd(path: &str, size_gb: u64) -> Result<(), String> {
     let size_bytes = size_gb * 1024 * 1024 * 1024;
@@ -126,6 +144,34 @@ mod tests {
 
         let detach_result = detach_with_handle(handle);
         assert!(detach_result.is_ok(), "Демонтування не вдалось: {:?}", detach_result);
+        println!("VHD демонтовано");
+    }
+
+    #[test]
+    fn test_mount_and_pause() {
+        let path = "C:\\Temp\\test_pocketspace.vhd";
+        
+        let _handle = mount_and_get_handle(path).expect("Монтування не вдалось");
+        println!("VHD змонтовано. Перевір Get-Disk в іншому терміналі.");
+        println!("Чекаю 30 секунд...");
+
+        std::thread::sleep(std::time::Duration::from_secs(30));
+
+        println!("Час вийшов, тест завершується (диск автоматично демонтується).");
+    }
+
+    #[test]
+    fn test_get_physical_path() {
+        let path = "C:\\Temp\\test_pocketspace.vhd";
+        
+        let handle = mount_and_get_handle(path).expect("Монтування не вдалось");
+        println!("VHD змонтовано");
+
+        let physical_path = get_physical_path(handle).expect("Не вдалось отримати шлях");
+        println!("Фізичний шлях диску: {}", physical_path);
+
+        let detach_result = detach_with_handle(handle);
+        assert!(detach_result.is_ok());
         println!("VHD демонтовано");
     }
 }
