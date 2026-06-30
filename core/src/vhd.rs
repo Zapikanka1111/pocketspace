@@ -2,10 +2,10 @@ use windows::{
     core::HSTRING,
     Win32::Foundation::{HANDLE, NO_ERROR},
     Win32::Storage::Vhd::{
-        CreateVirtualDisk, OpenVirtualDisk, AttachVirtualDisk,
+        CreateVirtualDisk, OpenVirtualDisk, AttachVirtualDisk, DetachVirtualDisk,
         CREATE_VIRTUAL_DISK_FLAG_NONE,
         CREATE_VIRTUAL_DISK_PARAMETERS, OPEN_VIRTUAL_DISK_PARAMETERS,
-        OPEN_VIRTUAL_DISK_FLAG, ATTACH_VIRTUAL_DISK_FLAG,
+        OPEN_VIRTUAL_DISK_FLAG, ATTACH_VIRTUAL_DISK_FLAG, DETACH_VIRTUAL_DISK_FLAG,
         OPEN_VIRTUAL_DISK_VERSION_2,
         VIRTUAL_DISK_ACCESS_ALL, VIRTUAL_DISK_ACCESS_NONE,
         VIRTUAL_STORAGE_TYPE_DEVICE_VHD, VIRTUAL_STORAGE_TYPE,
@@ -53,7 +53,7 @@ pub fn create_vhd(path: &str, size_gb: u64) -> Result<(), String> {
     }
 }
 
-pub fn mount_vhd(path: &str) -> Result<(), String> {
+pub fn mount_and_get_handle(path: &str) -> Result<HANDLE, String> {
     let storage_type = VIRTUAL_STORAGE_TYPE {
         DeviceId: VIRTUAL_STORAGE_TYPE_DEVICE_VHD,
         VendorId: VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT,
@@ -83,20 +83,25 @@ pub fn mount_vhd(path: &str) -> Result<(), String> {
     }
 
     let attach_result = unsafe {
-        AttachVirtualDisk(
-            handle,
-            None,
-            ATTACH_VIRTUAL_DISK_FLAG(0),
-            0,
-            None,
-            None,
-        )
+        AttachVirtualDisk(handle, None, ATTACH_VIRTUAL_DISK_FLAG(0), 0, None, None)
     };
 
-    if attach_result == NO_ERROR {
+    if attach_result != NO_ERROR {
+        return Err(format!("Помилка монтування VHD: {:?}", attach_result));
+    }
+
+    Ok(handle)
+}
+
+pub fn detach_with_handle(handle: HANDLE) -> Result<(), String> {
+    let detach_result = unsafe {
+        DetachVirtualDisk(handle, DETACH_VIRTUAL_DISK_FLAG(0), 0)
+    };
+
+    if detach_result == NO_ERROR {
         Ok(())
     } else {
-        Err(format!("Помилка монтування VHD: {:?}", attach_result))
+        Err(format!("Помилка демонтування VHD: {:?}", detach_result))
     }
 }
 
@@ -113,10 +118,14 @@ mod tests {
     }
 
     #[test]
-    fn test_mount_vhd() {
+    fn test_mount_and_detach() {
         let path = "C:\\Temp\\test_pocketspace.vhd";
-        let result = mount_vhd(path);
-        assert!(result.is_ok(), "VHD не змонтувався: {:?}", result);
-        println!("VHD успішно змонтовано: {}", path);
+        
+        let handle = mount_and_get_handle(path).expect("Монтування не вдалось");
+        println!("VHD змонтовано");
+
+        let detach_result = detach_with_handle(handle);
+        assert!(detach_result.is_ok(), "Демонтування не вдалось: {:?}", detach_result);
+        println!("VHD демонтовано");
     }
 }
